@@ -30,6 +30,9 @@ resource "helm_release" "rook_ceph_cluster" {
   values = [
     <<EOF
 cephClusterSpec:
+  monitoring:
+    enabled: true
+    createPrometheusRules: true
   storage:
     useAllNodes: false
     useAllDevices: false
@@ -43,11 +46,22 @@ cephClusterSpec:
         spec:
           resources:
             requests:
-              storage: 100Gi
+              storage: 10Gi
           storageClassName: rook-raw-block
           volumeMode: Block
           accessModes:
             - ReadWriteOnce
 EOF
   ]
+}
+
+resource "kubernetes_storage_class" "rook_raw_block" {
+  metadata {
+    name = "rook-raw-block"
+  }
+  storage_provisioner = "pd.csi.storage.gke.io"
+  volume_binding_mode = "WaitForFirstConsumer"
+  parameters = {
+    type = "pd-standard"
+  }
 }
