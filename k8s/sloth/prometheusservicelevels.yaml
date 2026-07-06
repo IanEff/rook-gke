@@ -1,0 +1,130 @@
+# sloth_id is NOT metadata.name — Sloth computes it as "{spec.service}-{slo.name}"
+# (confirmed against sloth/internal/storage/io/k8s_sloth.go). service/name below
+# are chosen so the concatenation matches rattle's SLO.ID exactly, per the
+# design doc's Integration Contract:
+#   ceph-rgw-availability = service "ceph-rgw"  + name "availability"
+#   ceph-osd-latency      = service "ceph-osd"  + name "latency"
+#   ceph-health           = service "ceph"      + name "health"
+#   argocd-sync           = service "argocd"    + name "sync"
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: ceph-rgw-availability
+  namespace: monitoring
+spec:
+  service: ceph-rgw
+  labels:
+    cluster: rook-ceph-gke
+  slos:
+    - name: availability
+      objective: 99.9
+      description: >-
+        99.9% of RGW requests succeed. Backed by the Ceph mgr's own RGW perf
+        counters (ceph_rgw_req/ceph_rgw_failed_req), already scraped via the
+        rook-ceph-mgr Prometheus job. Only populates once RGW has served at
+        least one request.
+      sli:
+        events:
+          errorQuery: sum(rate(ceph_rgw_failed_req[{{.window}}]))
+          totalQuery: sum(rate(ceph_rgw_req[{{.window}}]))
+      alerting:
+        name: CephRGWAvailabilitySLO
+        labels:
+          severity: critical
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: ceph-osd-latency
+  namespace: monitoring
+spec:
+  service: ceph-osd
+  labels:
+    cluster: rook-ceph-gke
+  slos:
+    - name: latency
+      objective: 99
+      description: >-
+        99% of OSD writes complete under 100ms.
+      sli:
+        events:
+          totalQuery: sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[{{.window}}]))
+          errorQuery: >-
+            sum(rate(ceph_osd_op_w_latency_count{job="ceph-latency-bridge"}[{{.window}}]))
+            - sum(rate(ceph_osd_op_w_latency_bucket{job="ceph-latency-bridge",le="102.399999"}[{{.window}}]))
+      alerting:
+        name: CephOSDLatencySLO
+        labels:
+          severity: critical
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: ceph-health
+  namespace: monitoring
+spec:
+  service: ceph
+  labels:
+    cluster: rook-ceph-gke
+  slos:
+    - name: health
+      objective: 99.9
+      description: >-
+        99.9% of the time ceph_health_status reports OK (0). WARN (1) and
+        ERR (2) both count as a violation for this window (clamped to 1).
+      sli:
+        raw:
+          errorRatioQuery: max(avg_over_time(clamp_max(ceph_health_status, 1)[{{.window}}:1m]))
+      alerting:
+        name: CephHealthSLO
+        labels:
+          severity: critical
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: argocd-sync
+  namespace: monitoring
+spec:
+  service: argocd
+  labels:
+    cluster: rook-ceph-gke
+  slos:
+    - name: sync
+      objective: 99
+      description: >-
+        99% of the time all ArgoCD Applications report Synced.
+      sli:
+        raw:
+          errorRatioQuery: >-
+            avg_over_time((count(argocd_app_info{sync_status!="Synced"}) or vector(0))[{{.window}}:1m])
+            /
+            avg_over_time(count(argocd_app_info)[{{.window}}:1m])
+      alerting:
+        name: ArgoCDSyncSLO
+        labels:
+          severity: critical
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning

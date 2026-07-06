@@ -21,3 +21,7 @@
 - **Documentation**:
   - Created [README.md](file:///Users/ian/projects/ceph/rook-gke/README.md) file detailing the project features, setup constraints, directory structure, and user execution steps.
 
+## 2026-07-06
+
+- **Replicated Sloth SLOs**: Replicated Sloth SLO definitions from `ceph-lab` to `k8s/sloth/prometheusservicelevels.yaml`, adapting the `cluster: rook-ceph-gke` label for GKE deployment and trimming legacy context from descriptions.
+
