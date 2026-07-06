@@ -16,11 +16,7 @@ storage:
       # if a node is deleted/replaced. GKE will automatically detach and re-attach 
       # the persistent disk to the new node.
       portable: true
-      # Distribute OSDs across failure domains (e.g. zones / hosts)
-      placement:
-        tolerations:
-          - key: client.common.usr.id
-            operator: Exists
+
       volumeClaimTemplates:
         - metadata:
             name: data

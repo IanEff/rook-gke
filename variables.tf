@@ -16,8 +16,3 @@ variable "cluster_name" {
   default     = "rook-ceph-gke"
 }
 
-variable "billing_account" {
-  description = "The billing account ID to associate if creating new projects (for completeness)."
-  type        = string
-  default     = "01E2A9-7D331A-58AD84"
-}
