@@ -18,3 +18,6 @@
     - Ran `tofu init` (successful).
     - Ran `tofu validate` (successful).
     - Ran `tofu plan` (successful, planning 6 resources to add).
+- **Documentation**:
+  - Created [README.md](file:///Users/ian/projects/ceph/rook-gke/README.md) file detailing the project features, setup constraints, directory structure, and user execution steps.
+
