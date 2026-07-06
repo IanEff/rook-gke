@@ -1,0 +1,36 @@
+# Rook CephCluster OSD storageClassDeviceSets Snippet
+# 
+# This block represents the OSD provisioning configuration. It should be merged
+# into your Rook `CephCluster` custom resource manifest under the `spec` path:
+#
+# spec:
+#   storage:
+#     ... <insert this snippet here> ...
+
+storage:
+  storageClassDeviceSets:
+    - name: rook-gke-osds
+      # The number of OSDs to provision. Set to 3 for our 3-node regional cluster.
+      count: 3
+      # Set portable to true so that Rook can reschedule OSD pods to other nodes
+      # if a node is deleted/replaced. GKE will automatically detach and re-attach 
+      # the persistent disk to the new node.
+      portable: true
+      # Distribute OSDs across failure domains (e.g. zones / hosts)
+      placement:
+        tolerations:
+          - key: client.common.usr.id
+            operator: Exists
+      volumeClaimTemplates:
+        - metadata:
+            name: data
+          spec:
+            resources:
+              requests:
+                storage: 100Gi # Size per OSD (adjust as needed)
+            # Use the custom StorageClass using GKE's pd.csi.storage.gke.io provisioner
+            storageClassName: rook-raw-block
+            # CRITICAL: volumeMode must be Block for Rook to consume it as a raw block device
+            volumeMode: Block
+            accessModes:
+              - ReadWriteOnce
