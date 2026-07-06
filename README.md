@@ -53,3 +53,36 @@ With the cluster and telemetry stack deployed, apply the `PrometheusServiceLevel
 ```bash
 kubectl apply -f k8s/sloth/prometheusservicelevels.yaml
 ```
+
+---
+
+## Generating Chaos for Signal Events
+
+To test `thump` and validate your telemetry stack, you can introduce intentional chaos to trigger the defined Sloth SLO violations:
+
+### 1. Triggering Ceph Health Violations (ceph-health)
+The `ceph-health` SLO monitors the overall Ceph cluster health (WARN/ERR states).
+- **Action**: Randomly kill Ceph Monitor or OSD pods.
+  ```bash
+  kubectl -n rook-ceph delete pod -l app=rook-ceph-osd
+  kubectl -n rook-ceph delete pod -l app=rook-ceph-mon
+  ```
+- **Expected Signal**: Ceph will go into `HEALTH_WARN` (and possibly `HEALTH_ERR`) while it re-peers and backfills. The Sloth error ratio will immediately spike.
+
+### 2. Triggering OSD Latency Violations (ceph-osd-latency)
+The `ceph-osd-latency` SLO requires 99% of OSD writes to complete in <100ms.
+- **Action**: Introduce network latency between pods using [Chaos Mesh](https://chaos-mesh.org/) or raw `tc` commands on the nodes, OR overwhelm the disk IO with a massive `fio` write workload.
+- **Expected Signal**: `ceph_osd_op_w_latency_bucket` times will shift, burning through your latency error budget in Sloth.
+
+### 3. Triggering RGW Availability Violations (ceph-rgw-availability)
+The `ceph-rgw-availability` SLO requires 99.9% of requests to succeed.
+- **Action**: First, generate baseline traffic to the Rados Gateway (RGW). Then, forcefully terminate RGW pods or block their ports.
+  ```bash
+  # Example: forcefully terminate RGW pods while traffic is flowing
+  kubectl -n rook-ceph delete pod -l app=rook-ceph-rgw --force --grace-period=0
+  ```
+- **Expected Signal**: Client requests will fail (5xx errors or timeouts), increasing the `ceph_rgw_failed_req` metric against `ceph_rgw_req`, which will trigger the availability SLO alert.
+
+### 4. Triggering ArgoCD Sync Violations (argocd-sync)
+- **Action**: Manually modify a deployed resource in the cluster (e.g., scale a deployment) directly via `kubectl` without committing it to git, causing ArgoCD to report an `OutOfSync` state.
+- **Expected Signal**: Sloth will register a violation for `argocd-sync` until the resource is either synced back by ArgoCD or fixed in the repository.
