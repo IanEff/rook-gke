@@ -51,8 +51,8 @@ resource "google_compute_firewall" "allow_internal" {
   }
 
   source_ranges = [
-    "10.0.0.0/20", # Nodes
-    "10.1.0.0/16", # Pods
-    "10.2.0.0/20"  # Services
+    google_compute_subnetwork.subnet.ip_cidr_range,                       # Nodes
+    google_compute_subnetwork.subnet.secondary_ip_range[0].ip_cidr_range, # Pods
+    google_compute_subnetwork.subnet.secondary_ip_range[1].ip_cidr_range  # Services
   ]
 }
