@@ -33,3 +33,26 @@ resource "google_compute_subnetwork" "subnet" {
     ip_cidr_range = "10.2.0.0/20"
   }
 }
+
+# Allow internal traffic within the VPC
+resource "google_compute_firewall" "allow_internal" {
+  name    = "${var.cluster_name}-allow-internal"
+  network = google_compute_network.vpc.name
+  project = var.project_id
+
+  allow {
+    protocol = "tcp"
+  }
+  allow {
+    protocol = "udp"
+  }
+  allow {
+    protocol = "icmp"
+  }
+
+  source_ranges = [
+    "10.0.0.0/20", # Nodes
+    "10.1.0.0/16", # Pods
+    "10.2.0.0/20"  # Services
+  ]
+}
