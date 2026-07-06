@@ -24,4 +24,5 @@
 ## 2026-07-06
 
 - **Replicated Sloth SLOs**: Replicated Sloth SLO definitions from `ceph-lab` to `k8s/sloth/prometheusservicelevels.yaml`, adapting the `cluster: rook-ceph-gke` label for GKE deployment and trimming legacy context from descriptions.
+- **Documentation Update**: Completely rewrote the `README.md` to reflect recent automated Helm deployment features (Rook and Telemetry stacks) and pod-to-pod firewall rules.
 
