@@ -83,6 +83,6 @@ resource "kubernetes_storage_class" "rook_raw_block" {
   storage_provisioner = "pd.csi.storage.gke.io"
   volume_binding_mode = "WaitForFirstConsumer"
   parameters = {
-    type = "pd-standard"
+    type = "pd-balanced"
   }
 }

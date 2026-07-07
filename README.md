@@ -23,7 +23,7 @@ This repository contains the OpenTofu (Terraform) scripts and Kubernetes manifes
 - **[outputs.tf](outputs.tf)**: Outputs the cluster name and the helper command to fetch credentials.
 - **[k8s/sloth/prometheusservicelevels.yaml](k8s/sloth/prometheusservicelevels.yaml)**: Sloth `PrometheusServiceLevel` custom resources defining SLOs for the cluster.
 - **[k8s/topology-catalog/catalog-info.yaml](k8s/topology-catalog/catalog-info.yaml)**: Backstage/topology component definitions for Ceph.
-- *(Note: `storage-class-raw.yaml` and `rook-cluster-osds-snippet.yaml` exist for historical reference but are actively managed by `rook.tf` in modern deployments)*.
+- *(Note: `rook-cluster-osds-snippet.yaml` exists for historical reference but is actively managed by `rook.tf` in modern deployments)*.
 
 ---
 
