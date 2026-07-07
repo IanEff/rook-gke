@@ -19,6 +19,14 @@ resource "google_container_cluster" "primary" {
   network    = google_compute_network.vpc.id
   subnetwork = google_compute_subnetwork.subnet.id
 
+  # Pinned away from us-central1-c: a prior apply hit GCE_STOCKOUT there for
+  # e2-standard-4. a/b/f are confirmed available.
+  node_locations = [
+    "us-central1-a",
+    "us-central1-b",
+    "us-central1-f",
+  ]
+
   ip_allocation_policy {
     cluster_secondary_range_name  = "gke-pods"
     services_secondary_range_name = "gke-services"
