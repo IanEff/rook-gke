@@ -18,15 +18,6 @@ resource "helm_release" "kube_prometheus_stack" {
   }
 }
 
-resource "helm_release" "sloth" {
-  name       = "sloth"
-  repository = "https://slok.github.io/sloth"
-  chart      = "sloth"
-  namespace  = kubernetes_namespace.monitoring.metadata[0].name
-  version    = "0.10.0"
-
-  depends_on = [helm_release.kube_prometheus_stack]
-}
 
 resource "kubernetes_config_map" "ceph_topology_catalog" {
   metadata {
