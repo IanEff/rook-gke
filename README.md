@@ -56,6 +56,36 @@ kubectl apply -f k8s/sloth/prometheusservicelevels.yaml
 
 ---
 
+## Generating S3 Traffic
+
+To simulate S3 client workloads, you can deploy the included traffic generator which automatically provisions an `ObjectBucketClaim` and writes/deletes objects in a loop.
+
+### 1. Deploy the Traffic Generator
+Apply the Kubernetes manifest to create the bucket claim and the generator pod:
+```bash
+kubectl apply -f k8s/s3-traffic-generator.yaml
+```
+
+### 2. Start the Traffic
+The pod will wait for manual activation before generating traffic. Exec into the pod and run the start script in the background:
+```bash
+kubectl exec -it deployment/s3-traffic-generator -- /start-traffic.sh
+```
+
+### 3. Scaling the Load
+To increase the S3 load, scale the deployment to spin up multiple generator pods:
+```bash
+kubectl scale deployment s3-traffic-generator --replicas=5
+```
+Because the pods wait for manual activation, you'll need to start the script on all running pods. You can do this with a quick shell loop:
+```bash
+for pod in $(kubectl get pods -l app=s3-traffic-generator -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl exec -d $pod -- sh -c 'nohup /start-traffic.sh > /dev/null 2>&1 &'
+done
+```
+
+---
+
 ## Generating Chaos for Signal Events
 
 To test `thump` and validate your telemetry stack, you can introduce intentional chaos to trigger the defined Sloth SLO violations:

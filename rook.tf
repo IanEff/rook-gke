@@ -51,6 +51,27 @@ cephClusterSpec:
           volumeMode: Block
           accessModes:
             - ReadWriteOnce
+cephObjectStores:
+  - name: my-store
+    spec:
+      metadataPool:
+        failureDomain: host
+        replicated:
+          size: 3
+      dataPool:
+        failureDomain: host
+        replicated:
+          size: 3
+      preservePoolsOnDelete: false
+      gateway:
+        port: 80
+        instances: 1
+    storageClass:
+      enabled: true
+      name: rook-ceph-bucket
+      reclaimPolicy: Delete
+      parameters:
+        region: us-east-1
 EOF
   ]
 }
