@@ -26,6 +26,7 @@ resource "kubernetes_config_map" "ceph_topology_catalog" {
   }
 
   data = {
-    "catalog-info.yaml" = file("${path.module}/k8s/topology-catalog/catalog-info.yaml")
+    "catalog-info.yaml"  = file("${path.module}/k8s/topology-catalog/catalog-info.yaml")
+    "state-queries.yaml" = file("${path.module}/k8s/topology-catalog/state-queries.yaml")
   }
 }
