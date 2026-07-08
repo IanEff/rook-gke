@@ -128,6 +128,52 @@ cephClusterSpec:
           volumeMode: Block
           accessModes:
             - ReadWriteOnce
+# MDS priority class/resources live here, NOT in cephClusterSpec.priorityClassNames/
+# resources (those don't have an "mds" key Rook actually reads for this daemon —
+# confirmed the hard way: setting cephClusterSpec.priorityClassNames.mds was
+# silently accepted by the permissive CRD schema and had zero effect). The MDS
+# deployment's priority class and 1-CPU/4Gi resource defaults live on the
+# CephFilesystem's spec.metadataServer instead.
+cephFileSystems:
+  - name: ceph-filesystem
+    spec:
+      metadataPool:
+        replicated:
+          size: 3
+      dataPools:
+        - failureDomain: host
+          replicated:
+            size: 3
+          name: data0
+      metadataServer:
+        activeCount: 1
+        activeStandby: true
+        priorityClassName: ""
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            memory: 2Gi
+    storageClass:
+      enabled: true
+      isDefault: false
+      name: ceph-filesystem
+      pool: data0
+      reclaimPolicy: Delete
+      allowVolumeExpansion: true
+      volumeBindingMode: "Immediate"
+      parameters:
+        csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
+        csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+        csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+        csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+        csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+        csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
+        csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
+        csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+        csi.storage.k8s.io/fstype: ext4
+
 cephObjectStores:
   - name: my-store
     spec:
