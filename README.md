@@ -60,6 +60,12 @@ SLOs are generated at build time (no live Sloth controller in the cluster). Rege
 kubectl apply -f k8s/sloth/prometheus-rules.yaml
 ```
 
+### 5. Teardown Infrastructure
+To completely tear down the GKE cluster, network, and all Ceph/Rook resources as quickly as the API allows, run:
+```bash
+tofu destroy -auto-approve
+```
+
 ---
 
 ## Known GKE Gotchas
