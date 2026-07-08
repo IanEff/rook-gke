@@ -16,3 +16,7 @@ crash.*.log
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# Personal Claude Code permission overrides (not team-wide policy) and runtime state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

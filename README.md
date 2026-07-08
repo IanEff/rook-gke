@@ -9,6 +9,7 @@ This repository contains the OpenTofu (Terraform) scripts and Kubernetes manifes
 3. **Custom Network Topology**: Provisions a dedicated custom VPC and subnet with secondary ranges dedicated to GKE pods (`10.1.0.0/16`) and services (`10.2.0.0/20`), including required internal pod-to-pod firewall rules.
 4. **Automated Helm Deployments**: Automates the deployment of the `rook-ceph` operator, `rook-ceph-cluster`, and `kube-prometheus-stack` directly through Terraform's Helm provider.
 5. **Telemetry & Service Level Objectives**: Prometheus-backed SLOs for Ceph health and RGW availability, generated at build time with `sloth` (see `scripts/gen_slos.sh`) into a plain `PrometheusRule` the Prometheus Operator consumes — no live Sloth controller in the cluster.
+6. **rbd Kernel Module Preload**: GKE's current `UBUNTU_CONTAINERD` image ships `rbd.ko` zstd-compressed; a small DaemonSet (`rbd-module-loader.tf`) preloads it via the host's own `kmod` on every node so cephcsi never has to `modprobe` it itself (see [Known GKE Gotchas](#known-gke-gotchas)).
 
 ---
 
@@ -19,6 +20,7 @@ This repository contains the OpenTofu (Terraform) scripts and Kubernetes manifes
 - **[vpc.tf](vpc.tf)**: Provisions the custom VPC, subnetwork, secondary IP ranges, and internal firewall rules.
 - **[gke.tf](gke.tf)**: Enables the GKE API, provisions the regional GKE cluster, and defines the Ubuntu node pool (`e2-standard-4` machines, 1 node per zone across 3 zones).
 - **[rook.tf](rook.tf)**: Manages the Rook namespace, storage class, and installs the Rook operator and Ceph cluster via Helm.
+- **[rbd-module-loader.tf](rbd-module-loader.tf)**: DaemonSet that preloads the `rbd` kernel module on every node via the host's own `modprobe` (see [Known GKE Gotchas](#known-gke-gotchas)).
 - **[telemetry.tf](telemetry.tf)**: Installs the `kube-prometheus-stack` and `sloth` via Helm, and manages the Ceph topology catalog ConfigMap.
 - **[outputs.tf](outputs.tf)**: Outputs the cluster name and the helper command to fetch credentials.
 - **[k8s/sloth/prometheusservicelevels.yaml](k8s/sloth/prometheusservicelevels.yaml)**: Sloth `PrometheusServiceLevel` source spec (input to `gen_slos.sh`, not applied to the cluster directly).
@@ -57,6 +59,52 @@ SLOs are generated at build time (no live Sloth controller in the cluster). Rege
 ./scripts/gen_slos.sh   # requires the `sloth` CLI
 kubectl apply -f k8s/sloth/prometheus-rules.yaml
 ```
+
+---
+
+## Known GKE Gotchas
+
+Deploying vanilla `rook-ceph` v1.14.7 onto GKE surfaced five independent, non-obvious
+incompatibilities. Each is already fixed in this repo's `.tf` files — documented here so
+nobody "fixes" them back to the chart defaults, and so the next incompatibility is easier
+to recognize as the same *class* of problem.
+
+1. **GKE rejects Rook's default priority classes.** The chart defaults mon/osd/mgr/mds and
+   the CSI plugin/provisioner pods to `system-node-critical`/`system-cluster-critical`. GKE's
+   `warden` admission webhook reserves those for GKE-managed namespaces only and rejects them
+   outright elsewhere (`insufficient quota to match these scopes`). Fixed by overriding to
+   `""` in three separate places: `cephClusterSpec.priorityClassNames` (mon/osd/mgr),
+   `csi.pluginPriorityClassName`/`csi.provisionerPriorityClassName` on the *operator* chart,
+   and — this one's easy to miss — `cephFileSystems[].spec.metadataServer.priorityClassName`
+   for MDS, which lives on a completely different part of the values tree and does **not**
+   read from `cephClusterSpec.priorityClassNames.mds` (that key is silently accepted by the
+   CRD's permissive schema and never consulted).
+2. **`rbd.ko` is zstd-compressed on current GKE images.** `UBUNTU_CONTAINERD` (Ubuntu 24.04,
+   kernel 6.8) ships the module compressed; cephcsi's bundled `modprobe`/`kmod` can't
+   decompress it (`Exec format error`). The host's own `kmod` (+ZSTD) loads it fine —
+   `rbd-module-loader.tf` preloads it that way on every node before cephcsi ever tries.
+3. **Monitoring RBAC needs a flag on the *operator* chart, not just the cluster chart.**
+   `cephClusterSpec.monitoring.enabled=true` makes Rook try to create `ServiceMonitor`s, but
+   the RBAC to do so is a separate `monitoring.enabled=true` on the `rook-ceph` operator
+   chart. Without it, `ceph-cluster-controller`'s reconcile fails at "enable mgr services"
+   on every attempt and never reaches OSD provisioning — with no obvious error surfaced
+   anywhere except the operator's own logs.
+4. **OSD device sets have no anti-affinity by default.** Nothing stops all N OSDs' PVCs (and
+   therefore pods) from landing on the same node/zone — first-come-first-served on whichever
+   node the prepare job schedules to. `rook.tf`'s `storageClassDeviceSets` has explicit
+   `placement`/`preparePlacement` podAntiAffinity to spread one OSD per node, the same way
+   Rook already does for mons.
+5. **The chart's default resource requests are sized for real hardware, not a 3-node lab.**
+   1 CPU per OSD (plus mon/mgr/mds defaults) saturates `e2-standard-4` nodes once GKE's own
+   DaemonSets are accounted for. Trimmed in `rook.tf`'s `resources`/`metadataServer.resources`
+   blocks — this is a low-traffic test cluster for `thump`, not a performance benchmark.
+
+**Operational note:** if the live cluster ever gets into a broken state, fix the root cause
+in the `.tf` files and recover via `tofu destroy` (scoped with `-target` to the broken layer)
++ `tofu apply` — don't hand-patch the running cluster with `kubectl delete`/`ceph
+--admin-daemon` surgery as a permanent fix. A corrupted Ceph mon store (from exactly that
+kind of live surgery) is what necessitated the full Ceph-layer rebuild this repo's
+`_system/log.md` documents for 2026-07-08.
 
 ---
 
