@@ -16,6 +16,28 @@ resource "helm_release" "rook_ceph_operator" {
     name  = "csi.enableRbdDriver"
     value = "true"
   }
+
+  # cephClusterSpec.monitoring.enabled below (in rook_ceph_cluster) makes Rook try
+  # to create ServiceMonitors for mgr/exporter, but only this operator-chart flag
+  # grants the RBAC to do so. Without it, ceph-cluster-controller's reconcile
+  # fails at "enable mgr services" on every attempt and never reaches OSD setup.
+  set {
+    name  = "monitoring.enabled"
+    value = "true"
+  }
+
+  # GKE reserves system-node-critical/system-cluster-critical priority classes for
+  # GKE-managed namespaces (enforced by the warden admission webhook); the chart
+  # defaults CSI plugin/provisioner pods to them, which GKE then rejects outright.
+  set {
+    name  = "csi.pluginPriorityClassName"
+    value = ""
+  }
+
+  set {
+    name  = "csi.provisionerPriorityClassName"
+    value = ""
+  }
 }
 
 resource "helm_release" "rook_ceph_cluster" {
@@ -33,6 +55,31 @@ cephClusterSpec:
   monitoring:
     enabled: true
     createPrometheusRules: true
+  # GKE rejects system-node-critical/system-cluster-critical (the chart's
+  # defaults) outside GKE-managed namespaces via its warden admission webhook.
+  priorityClassNames:
+    mon: ""
+    osd: ""
+    mgr: ""
+  # The chart's default OSD request (1 CPU) saturates e2-standard-4 nodes once
+  # GKE's own DaemonSets and the mon/mgr pods are accounted for. This is a
+  # low-traffic test cluster for thump, not a performance benchmark, so trim
+  # requests instead of paying for bigger nodes.
+  resources:
+    mon:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+    mgr:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+    osd:
+      requests:
+        cpu: 250m
+        memory: 2Gi
+      limits:
+        memory: 4Gi
   storage:
     useAllNodes: false
     useAllDevices: false
@@ -40,6 +87,36 @@ cephClusterSpec:
     - name: rook-gke-osds
       count: 3
       portable: true
+      # Without this, nothing stops all 3 device sets' PVCs (and therefore all 3
+      # OSD pods) from landing on the same zone/node — which is exactly what
+      # happened here, cramming 3 OSDs onto one e2-standard-4 while the other
+      # two nodes sat idle. Spread one per node, same as Rook already does for mons.
+      preparePlacement:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - rook-ceph-osd
+                  - rook-ceph-osd-prepare
+              topologyKey: kubernetes.io/hostname
+      placement:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - rook-ceph-osd
+                  - rook-ceph-osd-prepare
+              topologyKey: kubernetes.io/hostname
       volumeClaimTemplates:
       - metadata:
           name: data
