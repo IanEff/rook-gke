@@ -1,0 +1,39 @@
+name: SLO drift check
+
+# Sloth's generated PrometheusRule (k8s/sloth/prometheus-rules.yaml) is committed,
+# not generated in CI — this workflow only catches it going stale: someone edits
+# prometheusservicelevels.yaml and forgets to re-run ./scripts/gen_slos.sh.
+on:
+  push:
+    paths:
+      - "k8s/sloth/**"
+      - "scripts/gen_slos.sh"
+  pull_request:
+    paths:
+      - "k8s/sloth/**"
+      - "scripts/gen_slos.sh"
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    env:
+      SLOTH_VERSION: "0.16.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install sloth CLI
+        run: |
+          curl -sSL -o /usr/local/bin/sloth \
+            "https://github.com/slok/sloth/releases/download/v${SLOTH_VERSION}/sloth-linux-amd64"
+          chmod +x /usr/local/bin/sloth
+          sloth version
+
+      - name: Regenerate prometheus-rules.yaml
+        run: ./scripts/gen_slos.sh
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --exit-code k8s/sloth/prometheus-rules.yaml; then
+            echo "::error::k8s/sloth/prometheus-rules.yaml is stale — run ./scripts/gen_slos.sh and commit the result." >&2
+            exit 1
+          fi
