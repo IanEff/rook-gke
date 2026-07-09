@@ -1,5 +1,11 @@
 # Rook-Ceph GKE Infrastructure Provisioning
 
+Machine-generated throwaway GCloud testbed for Kubernetes projects that need Rook-Ceph stats.  
+
+Everything below this line has been inferred.
+
+---
+
 This repository contains the OpenTofu (Terraform) scripts and Kubernetes manifests to provision a regional Google Kubernetes Engine (GKE) cluster configured specifically to run a Rook-Ceph storage cluster. This environment is designed to test the companion reliability engine (`thump`).
 
 ## Features & Constraints Satisfied
