@@ -12,32 +12,20 @@ resource "helm_release" "rook_ceph_operator" {
   namespace  = kubernetes_namespace.rook_ceph.metadata[0].name
   version    = "v1.14.7"
 
-  set {
-    name  = "csi.enableRbdDriver"
-    value = "true"
-  }
-
   # cephClusterSpec.monitoring.enabled below (in rook_ceph_cluster) makes Rook try
   # to create ServiceMonitors for mgr/exporter, but only this operator-chart flag
   # grants the RBAC to do so. Without it, ceph-cluster-controller's reconcile
   # fails at "enable mgr services" on every attempt and never reaches OSD setup.
-  set {
-    name  = "monitoring.enabled"
-    value = "true"
-  }
-
+  #
   # GKE reserves system-node-critical/system-cluster-critical priority classes for
   # GKE-managed namespaces (enforced by the warden admission webhook); the chart
   # defaults CSI plugin/provisioner pods to them, which GKE then rejects outright.
-  set {
-    name  = "csi.pluginPriorityClassName"
-    value = ""
-  }
-
-  set {
-    name  = "csi.provisionerPriorityClassName"
-    value = ""
-  }
+  set = [
+    { name = "csi.enableRbdDriver", value = "true" },
+    { name = "monitoring.enabled", value = "true" },
+    { name = "csi.pluginPriorityClassName", value = "" },
+    { name = "csi.provisionerPriorityClassName", value = "" },
+  ]
 }
 
 resource "helm_release" "rook_ceph_cluster" {

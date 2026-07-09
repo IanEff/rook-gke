@@ -12,10 +12,9 @@ resource "helm_release" "kube_prometheus_stack" {
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
   version    = "61.3.0"
 
-  set {
-    name  = "prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues"
-    value = "false"
-  }
+  set = [
+    { name = "prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues", value = "false" },
+  ]
 }
 
 

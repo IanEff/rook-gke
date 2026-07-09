@@ -16,15 +16,20 @@ resource "google_container_cluster" "primary" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
+  # This is a disposable, destroy/rebuild-heavy test lab (see CLAUDE.md) -- the
+  # google provider's default deletion_protection=true blocks exactly the
+  # workflow this repo is built around, and just silently refused `tofu destroy`
+  # with no plan-time warning.
+  deletion_protection = false
+
   network    = google_compute_network.vpc.id
   subnetwork = google_compute_subnetwork.subnet.id
 
-  # Pinned away from us-central1-c: a prior apply hit GCE_STOCKOUT there for
-  # e2-standard-4. a/b/f are confirmed available.
+  # us-central1-c and us-central1-f have both hit GCE_STOCKOUT for e2-standard-4
+  # on separate occasions. Down to the two zones that have actually worked.
   node_locations = [
     "us-central1-a",
     "us-central1-b",
-    "us-central1-f",
   ]
 
   ip_allocation_policy {
@@ -44,6 +49,19 @@ resource "google_container_cluster" "primary" {
     google_project_service.container,
     google_project_service.compute
   ]
+
+  # The provider's default 40m create timeout is too tight for this regional
+  # (3-zone) cluster -- GKE creation here routinely runs 30-40+ min, and a
+  # client-side timeout fires while GCP is still legitimately mid-CREATE_CLUSTER
+  # (confirmed via `gcloud container operations describe`: state RUNNING, not
+  # stuck). Tofu still records the resource once the create RPC returns, so the
+  # timeout doesn't lose the resource -- but it does abort the rest of the apply
+  # graph (node pool + everything downstream) for no real reason. Don't
+  # interrupt/delete a cluster still in this state; verify via `gcloud
+  # container operations list` first (see README "Known GKE Gotchas").
+  timeouts {
+    create = "60m"
+  }
 }
 
 # Regional Node Pool definition (spread across zones in the region)

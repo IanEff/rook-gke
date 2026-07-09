@@ -28,7 +28,10 @@ This repository contains the OpenTofu (Terraform) scripts and Kubernetes manifes
 - **[rook.tf](rook.tf)**: Manages the Rook namespace, storage class, and installs the Rook operator and Ceph cluster via Helm.
 - **[rbd-module-loader.tf](rbd-module-loader.tf)**: DaemonSet that preloads the `rbd` kernel module on every node via the host's own `modprobe` (see [Known GKE Gotchas](#known-gke-gotchas)).
 - **[telemetry.tf](telemetry.tf)**: Installs the `kube-prometheus-stack` and `sloth` via Helm, and manages the Ceph topology catalog ConfigMap.
+- **[loki.tf](loki.tf)**: Installs Loki + Promtail via Helm — log storage feeding thump's `loki` evidence tool.
+- **[tempo.tf](tempo.tf)**: Installs Tempo via Helm — trace storage for thump's own self-observability (Phase B).
 - **[outputs.tf](outputs.tf)**: Outputs the cluster name and the helper command to fetch credentials.
+- **[justfile](justfile)**: Wraps the OpenTofu/kubectl lifecycle (`init`/`plan`/`apply`/`destroy`/`credentials`/`gen-slos`) so every recipe reinitializes providers first.
 - **[k8s/sloth/prometheusservicelevels.yaml](k8s/sloth/prometheusservicelevels.yaml)**: Sloth `PrometheusServiceLevel` source spec (input to `gen_slos.sh`, not applied to the cluster directly).
 - **[k8s/sloth/prometheus-rules.yaml](k8s/sloth/prometheus-rules.yaml)**: Generated `PrometheusRule` (build artifact — regenerate with `scripts/gen_slos.sh`, don't hand-edit).
 - **[scripts/gen_slos.sh](scripts/gen_slos.sh)**: Runs `sloth generate` against the spec above and writes the `PrometheusRule`.
@@ -40,37 +43,68 @@ This repository contains the OpenTofu (Terraform) scripts and Kubernetes manifes
 
 ## Getting Started
 
+A `justfile` wraps the commands below (`just` alone lists recipes). Every recipe that
+touches OpenTofu depends on `init`, so a missing or stale `.terraform/` (fresh clone,
+pruned cache — it's gitignored and never survives either) can't cause a partial run
+anymore; see [Recovering from a stuck teardown](#recovering-from-a-stuck-teardown) for
+why that matters.
+
 ### 1. Initialize & Plan OpenTofu
 Initialize the working directory (downloads providers for Google, Kubernetes, and Helm) and review the planned infrastructure changes:
 ```bash
-tofu init
-tofu plan
+just init
+just plan
 ```
 
 ### 2. Deploy Infrastructure
 Deploy the VPC, subnet, GKE cluster, node pools, Rook-Ceph cluster, and Telemetry stack all in one go:
 ```bash
-tofu apply
+just apply
 ```
 
 ### 3. Configure kubectl Credentials
 Retrieve the credentials for the newly created cluster:
 ```bash
-gcloud container clusters get-credentials rook-ceph-gke --region us-central1 --project terraform-sandbox-430820
+just credentials
 ```
 
 ### 4. Generate & Apply Sloth SLOs
 SLOs are generated at build time (no live Sloth controller in the cluster). Regenerate the `PrometheusRule` from the spec and apply it so `kube-prometheus-stack`'s Prometheus Operator picks it up:
 ```bash
-./scripts/gen_slos.sh   # requires the `sloth` CLI
-kubectl apply -f k8s/sloth/prometheus-rules.yaml
+just gen-slos   # requires the `sloth` CLI
 ```
 
 ### 5. Teardown Infrastructure
 To completely tear down the GKE cluster, network, and all Ceph/Rook resources as quickly as the API allows, run:
 ```bash
-tofu destroy -auto-approve
+just destroy
 ```
+This always reinitializes providers first (`init` is a dependency), so it either fully
+runs or never starts — it can't strand a half-deleted Rook namespace the way a bare
+`tofu destroy` against a missing `.terraform/` can (see below).
+
+### Recovering from a stuck teardown
+If a `tofu destroy` is ever interrupted or fails partway through (as happened on
+2026-07-08 from a missing `.terraform/`, before `just destroy` existed), Kubernetes may
+delete the Rook operator before the `CephCluster`/`CephObjectStore` custom resources it
+owns finish finalizing — and since the operator is what clears those finalizers, the
+`rook-ceph` namespace is left `Terminating` forever with nothing left to unblock it.
+Recognize it via:
+```bash
+kubectl get ns rook-ceph                       # stuck in Terminating
+kubectl get ns rook-ceph -o jsonpath='{.status.conditions}'   # names the stuck finalizers
+```
+Fix by clearing the finalizers by hand (safe here — the operator and all Ceph daemons
+are already gone, there's nothing live to corrupt) on whatever the conditions list, e.g.:
+```bash
+kubectl -n rook-ceph patch cephcluster rook-ceph --type=merge -p '{"metadata":{"finalizers":[]}}'
+kubectl -n rook-ceph patch cephobjectstore <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
+kubectl -n rook-ceph patch configmap rook-ceph-mon-endpoints --type=merge -p '{"metadata":{"finalizers":[]}}'
+kubectl -n rook-ceph patch secret rook-ceph-mon --type=merge -p '{"metadata":{"finalizers":[]}}'
+```
+Then re-run `just apply` for a clean rebuild. This is a hand-patch of an *already-dead*
+namespace with no running daemons, not the live-cluster surgery `CLAUDE.md` warns
+against — that policy is about not hand-patching a **running** Ceph cluster.
 
 ---
 
