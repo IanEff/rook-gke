@@ -2,8 +2,28 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# The kubernetes/helm providers (providers.tf) exec `gke-gcloud-auth-plugin` to
+# authenticate. `gcloud components install` drops that binary under the SDK's
+# own bin/ dir, but neither Homebrew's gcloud cask nor `gcloud` itself symlinks
+# it into a directory that's on PATH by default (fish in particular never
+# sources gcloud's bash/zsh path.*.inc snippets) -- so `tofu apply`/`destroy`
+# fail with "executable not found" even though `gcloud` and the plugin are
+# both installed. Prepend the SDK's bin/ dir here so every recipe below finds
+# it regardless of the caller's shell/PATH setup.
+export PATH := `gcloud info --format='value(installation.sdk_root)' 2>/dev/null`  + "/bin:" + env_var('PATH')
+
 default:
     @just --list
+
+# One-shot bootstrap: apply everything (VPC through Rook-Ceph and monitoring),
+# then wire up kubectl so it's usable immediately after. This is the only
+# command needed to go from nothing to a working cluster. Still asks for the
+# interactive "yes" apply confirmation below -- it's creating real, billed
+# cloud resources, so that gate stays even here.
+up: apply credentials
+    @echo
+    @echo "Cluster is up, kubectl is pointed at it. Sanity check:"
+    @kubectl get nodes
 
 # Initialize/reinitialize providers. Idempotent -- safe to run before every
 # other recipe, which is exactly the point (see `destroy` below).
@@ -35,13 +55,21 @@ apply: init
 destroy: init
     tofu destroy -auto-approve
 
+# Fetches kubeconfig, and makes sure gke-gcloud-auth-plugin resolves from a
+# plain shell too -- see scripts/link_auth_plugin.sh for why that's a separate
+# step from the justfile's own PATH export.
 credentials: init
     eval "$(tofu output -raw get_credentials_command)"
+    ./scripts/link_auth_plugin.sh
 
 gen-slos:
     ./scripts/gen_slos.sh
     kubectl apply -f k8s/sloth/prometheus-rules.yaml
 
-# Tear down gcloud resources using gcloud cli
+# Emergency teardown via gcloud CLI directly, bypassing OpenTofu -- for when
+# `just destroy` can't run (broken .terraform/, unresponsive cluster API,
+# etc). Deletes the cluster, any orphaned PVC-backed disks (Rook/Loki/Tempo),
+# firewall, subnet, and VPC, then verifies each is actually gone and clears
+# the now-stale local terraform.tfstate. See scripts/ripcord.sh.
 pull-ripcord:
     ./scripts/ripcord.sh

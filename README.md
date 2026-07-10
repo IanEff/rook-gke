@@ -49,32 +49,49 @@ pruned cache — it's gitignored and never survives either) can't cause a partia
 anymore; see [Recovering from a stuck teardown](#recovering-from-a-stuck-teardown) for
 why that matters.
 
-### 1. Initialize & Plan OpenTofu
+### Quickest path: `just up`
+Provisions everything (VPC, GKE cluster, node pool, Rook-Ceph, Telemetry stack) and leaves
+`kubectl` working in your *own* shell afterward, not just inside `just` recipes:
+```bash
+just up
+```
+It still stops for the interactive `yes` that `tofu apply` normally asks for — it's
+creating real, billed cloud resources, so that confirmation isn't skipped. It's
+equivalent to `just apply` + `just credentials` below, run back to back.
+
+### Step by step
+If you'd rather run each stage yourself:
+
+#### 1. Initialize & Plan OpenTofu
 Initialize the working directory (downloads providers for Google, Kubernetes, and Helm) and review the planned infrastructure changes:
 ```bash
 just init
 just plan
 ```
 
-### 2. Deploy Infrastructure
+#### 2. Deploy Infrastructure
 Deploy the VPC, subnet, GKE cluster, node pools, Rook-Ceph cluster, and Telemetry stack all in one go:
 ```bash
 just apply
 ```
 
-### 3. Configure kubectl Credentials
-Retrieve the credentials for the newly created cluster:
+#### 3. Configure kubectl Credentials
+Retrieve the credentials for the newly created cluster. This also symlinks
+`gke-gcloud-auth-plugin` onto your shell's `PATH` if it isn't already
+reachable there (see [Known GKE Gotchas](#known-gke-gotchas)) — without it,
+`kubectl` fails with `exec: executable gke-gcloud-auth-plugin not found` even
+though `tofu apply` itself succeeded:
 ```bash
 just credentials
 ```
 
-### 4. Generate & Apply Sloth SLOs
+#### 4. Generate & Apply Sloth SLOs
 SLOs are generated at build time (no live Sloth controller in the cluster). Regenerate the `PrometheusRule` from the spec and apply it so `kube-prometheus-stack`'s Prometheus Operator picks it up:
 ```bash
 just gen-slos   # requires the `sloth` CLI
 ```
 
-### 5. Teardown Infrastructure
+### Teardown Infrastructure
 To completely tear down the GKE cluster, network, and all Ceph/Rook resources as quickly as the API allows, run:
 ```bash
 just destroy
@@ -105,6 +122,22 @@ kubectl -n rook-ceph patch secret rook-ceph-mon --type=merge -p '{"metadata":{"f
 Then re-run `just apply` for a clean rebuild. This is a hand-patch of an *already-dead*
 namespace with no running daemons, not the live-cluster surgery `CLAUDE.md` warns
 against — that policy is about not hand-patching a **running** Ceph cluster.
+
+### Emergency teardown: `just pull-ripcord`
+For when `just destroy` itself can't run — a corrupted `.terraform/`, an unresponsive
+cluster API, or anything else that leaves OpenTofu unable to reach the cluster to tear it
+down through the normal provider path:
+```bash
+just pull-ripcord
+```
+This bypasses OpenTofu entirely and drives `gcloud` directly (`scripts/ripcord.sh`):
+deletes the GKE cluster, sweeps any orphaned PVC-backed persistent disks (deleting the
+cluster this way skips Kubernetes' normal PVC-delete flow, which is what would otherwise
+reclaim Rook OSD/mon, Loki, and Tempo disks), then the firewall rule, subnet, and VPC.
+Every deletion is independently re-verified by listing the resource afterward rather than
+trusting the delete call's exit code, and it prints a clear `[ok]`/`[FAIL]` summary. On a
+fully clean teardown it also clears the now-stale local `terraform.tfstate`, since it no
+longer describes anything real. Safe to re-run — every step is a no-op if already gone.
 
 ---
 
@@ -144,6 +177,17 @@ to recognize as the same *class* of problem.
    1 CPU per OSD (plus mon/mgr/mds defaults) saturates `e2-standard-4` nodes once GKE's own
    DaemonSets are accounted for. Trimmed in `rook.tf`'s `resources`/`metadataServer.resources`
    blocks — this is a low-traffic test cluster for `thump`, not a performance benchmark.
+6. **`gke-gcloud-auth-plugin` is rarely on `PATH` by default.** Both `tofu apply`/`destroy`
+   (via the kubernetes/helm providers' `exec` auth in `providers.tf`) and plain `kubectl`
+   need this plugin, but `gcloud components install` drops it under the SDK's own `bin/`,
+   which neither Homebrew's gcloud cask nor `gcloud` itself symlinks anywhere that's on
+   `PATH` (and fish never sources gcloud's bash/zsh `path.*.inc` snippets). Left unfixed,
+   `tofu apply` can run for 10+ minutes creating the cluster and node pool successfully,
+   then fail with `exec: executable gke-gcloud-auth-plugin not found` once it reaches the
+   kubernetes/helm resources. The `justfile` prepends the SDK's `bin/` dir to `PATH` for
+   every recipe (fixes `tofu`), and `just credentials`/`just up` additionally run
+   `scripts/link_auth_plugin.sh`, which symlinks the plugin into the same directory
+   `gcloud` itself resolves from on your *actual* shell PATH (fixes bare `kubectl`).
 
 **Operational note:** if the live cluster ever gets into a broken state, fix the root cause
 in the `.tf` files and recover via `tofu destroy` (scoped with `-target` to the broken layer)
