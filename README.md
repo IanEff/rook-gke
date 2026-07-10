@@ -225,6 +225,12 @@ for pod in $(kubectl get pods -l app=s3-traffic-generator -o jsonpath='{.items[*
   kubectl exec -d $pod -- sh -c 'nohup /start-traffic.sh > /dev/null 2>&1 &'
 done
 ```
+Or for `fish` users:
+```fish
+for pod in (kubectl get pods -l app=s3-traffic-generator -o jsonpath='{.items[*].metadata.name}' | string split -n " ")
+  kubectl exec -d $pod -- sh -c 'nohup /start-traffic.sh > /dev/null 2>&1 &'
+end
+```
 
 ---
 

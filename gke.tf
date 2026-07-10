@@ -25,11 +25,21 @@ resource "google_container_cluster" "primary" {
   network    = google_compute_network.vpc.id
   subnetwork = google_compute_subnetwork.subnet.id
 
-  # us-central1-c and us-central1-f have both hit GCE_STOCKOUT for e2-standard-4
-  # on separate occasions. Down to the two zones that have actually worked.
+  # Pinned away from us-central1-c: a prior apply hit GCE_STOCKOUT there for
+  # e2-standard-4. a/b/f are confirmed available -- don't drop to 2 zones,
+  # even after a transient GCE_STOCKOUT in one of them (has happened in both
+  # c and f on separate occasions, and self-resolved on retry): rook.tf's
+  # monCount=3 + allowMultiplePerNode=false, and the storageClassDeviceSets
+  # anti-affinity for 3 OSDs, both require 3 distinct nodes. A 2-zone pool
+  # leaves the CephCluster permanently stuck ("cannot start 3 mons on 2
+  # node(s)") with no mons and no OSDs ever created. If a zone is
+  # persistently out of capacity, replace it with a real 4th option instead
+  # of shrinking to 2 -- us-central1 only has a/b/c/f, so retrying the apply
+  # is the practical fix for a transient stockout.
   node_locations = [
     "us-central1-a",
     "us-central1-b",
+    "us-central1-f",
   ]
 
   ip_allocation_policy {

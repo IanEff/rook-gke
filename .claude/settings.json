@@ -1,52 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tofu init *)",
-      "Bash(tofu validate *)",
-      "Bash(tofu plan *)",
-      "Bash(tofu apply *)",
-      "Bash(tofu destroy *)",
-      "Bash(tofu state *)",
-      "Bash(tofu import *)",
+      "Bash(tofu *)",
+      "Bash(kubectl *)",
+      "Bash(gcloud *)",
+      "Bash(just *)",
+      "Bash(helm *)",
 
-      "Bash(kubectl get *)",
-      "Bash(kubectl describe *)",
-      "Bash(kubectl logs *)",
-      "Bash(kubectl exec *)",
-      "Bash(kubectl top *)",
-      "Bash(kubectl events *)",
+      "Bash(git *)",
+      "Bash(rg *)",
+      "Bash(fd *)",
 
-      "Bash(kubectl apply *)",
-      "Bash(kubectl patch *)",
-      "Bash(kubectl delete pod *)",
-      "Bash(kubectl delete deployment *)",
-      "Bash(kubectl delete job *)",
-      "Bash(kubectl delete pvc *)",
-      "Bash(kubectl delete persistentvolumeclaim *)",
-      "Bash(kubectl delete configmap *)",
-      "Bash(kubectl delete secret *)",
-      "Bash(kubectl delete storageclass *)",
-      "Bash(kubectl delete cephcluster *)",
-      "Bash(kubectl delete cephblockpool *)",
-      "Bash(kubectl delete cephfilesystem *)",
-      "Bash(kubectl delete cephobjectstore *)",
-
-      "Bash(kubectl debug node *)",
-      "Bash(kubectl config use-context *)",
-      "Bash(kubectl config get-contexts *)",
-      "Bash(kubectl config current-context *)",
-
-      "Bash(gcloud container clusters describe *)",
-      "Bash(gcloud container clusters get-credentials *)",
-      "Bash(gcloud container operations list *)",
-      "Bash(gcloud compute instances list *)",
-      "Bash(gcloud compute firewall-rules list *)",
-      "Bash(gcloud compute zones list *)",
-      "Bash(gcloud compute regions describe *)",
-
-      "Bash(helm show values *)",
-      "Bash(helm get values *)",
-      "Bash(helm repo list *)"
+      "Bash(./scripts/*.sh *)",
+      "Bash(./scripts/*.sh)",
+      "Bash(sloth *)",
+      "Bash(kubeconform *)",
+      "Bash(yq *)",
+      "Bash(jq *)"
     ]
   }
 }
